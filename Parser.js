@@ -22,6 +22,7 @@ const FALLBACK_MERCHANT = {
 
 /** Tes: log semua transaksi yang berhasil di-parse. */
 function tesParserLivin() {
+  Logger.log('Parser ' + PARSER_VERSI);
   const threads = GmailApp.search(LIVIN_QUERY, 0, 30);
   let ok = 0, gagal = 0;
   threads.forEach(thread => {
@@ -68,7 +69,7 @@ function parseLivin(msg) {
   const tipe = tentukanTipe(subject);
   if (!tipe) return null;
 
-  const html = msg.getBody();
+  const html = normalisasiHtml_(msg.getBody());
   const baris = ambilBaris(html);
   const penerima = ambilPenerima(html);
 
@@ -141,9 +142,10 @@ function ambilBaris(html) {
   return hasil;
 }
 
-/** Kotak "Penerima" atau "Penyedia Jasa" (nama + detail di bawahnya). */
+/** Kotak "Penerima" atau "Penyedia Jasa" (nama + detail di bawahnya).
+ *  Dukung dua varian tag: <p> (format lama/QRIS) dan <div> (format baru/VA). */
 function ambilPenerima(html) {
-  const rx = /(?:Penerima|Penyedia Jasa)<\/p>\s*<h4[^>]*>([^<]*)<\/h4>\s*<p[^>]*>([^<]*)<\/p>/;
+  const rx = />\s*(?:Penerima|Penyedia Jasa)\s*<\/(?:p|div)>\s*<h4[^>]*>([^<]*)<\/h4>\s*<(?:p|div)[^>]*>([^<]*)<\/(?:p|div)>/;
   const m = rx.exec(html);
   if (!m) return { nama: null, detail: null };
   return {
@@ -186,6 +188,26 @@ function bersihkan(s) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/**
+ * Penanda versi parser (muncul di log tes/sync). Kalau log tidak menampilkan
+ * versi ini, berarti kode di Apps Script belum di-update.
+ */
+const PARSER_VERSI = '2026-10-08a';
+
+/**
+ * Decode quoted-printable kalau body masih mentah (=3D, soft-break "=+newline").
+ * Kalau sudah bersih, dikembalikan apa adanya (aman idempoten).
+ */
+function normalisasiHtml_(html) {
+  const h = String(html);
+  if (h.indexOf('=3D') === -1 && h.indexOf('=\n') === -1 && h.indexOf('=\r\n') === -1) return h;
+  return h
+    .replace(/=\r?\n/g, '')
+    .replace(/=([0-9A-Fa-f]{2})/g, function (m, hex) {
+      return String.fromCharCode(parseInt(hex, 16));
+    });
+}
 function diagnosisTransfer() {
   const threads = GmailApp.search(LIVIN_QUERY, 0, 100);
   threads.forEach(t => t.getMessages().forEach(msg => {
@@ -198,6 +220,40 @@ function diagnosisTransfer() {
   }));
 }
 
+/**
+ * Perbaiki baris lama yang merchant-nya masih fallback
+ * ('Pembayaran (tanpa penerima)' dkk., kebanyakan pembayaran VA):
+ * parse ulang email aslinya via kolom email_id, lalu tulis nama
+ * penerima + nomor VA yang sebenarnya. Aman diulang.
+ */
+function perbaikiMerchant() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(TAB_TRANSAKSI);
+  if (!sheet || sheet.getLastRow() < 2) { Logger.log('Tab transaksi kosong.'); return; }
+  Logger.log('Parser ' + PARSER_VERSI);
+
+  const fallback = {};
+  Object.keys(FALLBACK_MERCHANT).forEach(k => { fallback[FALLBACK_MERCHANT[k]] = true; });
+
+  const n = sheet.getLastRow() - 1;
+  const data = sheet.getRange(2, 1, n, KOLOM_TRANSAKSI.length).getValues();
+  let diperbaiki = 0, tetap = 0;
+
+  data.forEach((r, i) => {
+    if (!fallback[String(r[6])]) return;   // kolom merchant sudah berisi nama
+    const emailId = String(r[11] || '');   // kolom email_id
+    let msg = null;
+    try { msg = emailId ? GmailApp.getMessageById(emailId) : null; } catch (e) {}
+    if (!msg) { tetap++; return; }
+    const h = parseLivin(msg) || parseWondr(msg);
+    if (!h || !h.merchant || fallback[h.merchant]) { tetap++; return; }
+    sheet.getRange(i + 2, 7, 1, 2).setValues([[h.merchant, h.detail_penerima || '']]);
+    diperbaiki++;
+  });
+
+  Logger.log('Perbaikan selesai. Diperbaiki: ' + diperbaiki + ' | Tetap fallback: ' + tetap);
+}
+
 /* ============================================================
  *  PENYIMPANAN KE GOOGLE SHEETS
  * ============================================================ */
@@ -208,12 +264,16 @@ const TAB_DITOLAK   = 'log_ditolak';
 const TAB_CONFIG  = 'config';
 const TAB_KOREKSI = 'koreksi';
 const TAB_TABUNGAN  = 'tabungan';
+const TAB_MANUAL = 'manual';
+const TAB_CATATAN = 'catatan';
 
 const KOLOM_TRANSAKSI = [
   'id', 'tanggal', 'jumlah', 'biaya', 'arah', 'akun', 'merchant',
   'detail_penerima', 'kategori', 'tipe', 'sumber_subject', 'email_id', 'diproses_pada'
 ];
 const KOLOM_PEMASUKAN = ['tanggal', 'jumlah', 'sumber', 'catatan'];
+const KOLOM_MANUAL = ['tanggal', 'jumlah', 'keterangan', 'kategori'];
+const KOLOM_CATATAN = ['id', 'catatan', 'diubah_pada'];
 const KOLOM_DITOLAK   = ['email_id', 'sender', 'subject', 'alasan', 'waktu'];
 const KOLOM_TABUNGAN  = ['id', 'tanggal', 'jumlah', 'sumber', 'produk', 'unit', 'email_id', 'diproses_pada'];
 
@@ -223,6 +283,8 @@ function setup() {
 
   buatTab_(ss, TAB_TRANSAKSI, KOLOM_TRANSAKSI);
   buatTab_(ss, TAB_PEMASUKAN, KOLOM_PEMASUKAN);
+  buatTab_(ss, TAB_MANUAL, KOLOM_MANUAL);
+  buatTab_(ss, TAB_CATATAN, KOLOM_CATATAN);
   buatTab_(ss, TAB_DITOLAK, KOLOM_DITOLAK);
   buatTab_(ss, TAB_KOREKSI, ['merchant', 'kategori']);
   buatTab_(ss, TAB_TABUNGAN, KOLOM_TABUNGAN);
@@ -233,7 +295,7 @@ function setup() {
     cfg.getRange(2, 1, 5, 2).setValues([
       ['Belanja Makan',  'warung, resto, restoran, rumah makan, kopi, coffee, cafe, kafe, bakso, mie, nasi, ayam, sate, lontong, soto, roti, bakery, geprek, martabak, es, kedai, depot, warteg, padang, boba, tea, cream, aroma'],
       ['Transport',      'grab, gojek, gocar, goride, bluebird, taksi, ojek, parkir, tol, krl, mrt, lrt, transjakarta, kai, bensin, pertamina, spbu, shell, e-money'],
-      ['Tagihan',        'pln, listrik, pdam, air, indihome, telkom, telkomsel, xl, axis, indosat, tri, pulsa, paket data, bpjs, asuransi, kos, kost, sewa, cicilan, pajak'],
+      ['Tagihan',        'pln, token, listrik, pdam, air, indihome, telkom, telkomsel, xl, axis, indosat, tri, pulsa, paket data, bpjs, asuransi, kos, kost, sewa, cicilan, pajak'],
       ['Belanja',        'indomaret, alfamart, alfamidi, superindo, hypermart, transmart, lotte, giant, ranch, mall, toko, store, mart, minimarket'],
       ['Belanja Online', 'shopee, tokopedia, lazada, blibli, tiktok']
     ]);
@@ -252,6 +314,11 @@ function setup() {
   const p = ss.getSheetByName(TAB_PEMASUKAN);
   p.getRange('A:A').setNumberFormat('yyyy-mm-dd');
   p.getRange('B:B').setNumberFormat('#,##0');
+
+  // Transaksi cash/manual: diisi dari dashboard, bisa dihapus dari dashboard
+  const mn = ss.getSheetByName(TAB_MANUAL);
+  mn.getRange('A:A').setNumberFormat('yyyy-mm-dd');
+  mn.getRange('B:B').setNumberFormat('#,##0');
 
   const tb = ss.getSheetByName(TAB_TABUNGAN);
   tb.getRange('A:A').setNumberFormat('@');          // id = nomor order, simpan sebagai teks
@@ -389,11 +456,13 @@ function syncLivin(hariKebelakang, hariOffset) {
   // Dedup: baca semua id yang sudah ada (sekali)
   const idAda = ambilIdAda_(sheetT);
   const emailDitolakAda = ambilEmailIdDitolak_(sheetD);
+  // Indeks nominal+tanggal untuk gabung dengan struk GoPay yang sudah ada
+  const indeks = muatIndeksCocok_(sheetT);
 
   const barisBaru = [];
   const barisDitolak = [];
   const sekarang = new Date();
-  let dilewati = 0;
+  let dilewati = 0, digabung = 0;
 
   const threads = cariSemuaThread_(query);
   threads.forEach(thread => {
@@ -416,6 +485,14 @@ function syncLivin(hariKebelakang, hariOffset) {
       if (idAda[id]) { dilewati++; return; }
       idAda[id] = true; // cegah duplikat di dalam batch yang sama
 
+      // Nominal + tanggal sama dengan struk GoPay = SATU transaksi
+      const cocok = cariCocok_(indeks, h.jumlah, h.tanggal, ['GoPay'], ['Livin']);
+      if (cocok) {
+        tandaiCocokBank_(sheetT, cocok.baris, h);
+        digabung++;
+        return;
+      }
+
       barisBaru.push([
         id, h.tanggal, h.jumlah, h.biaya, h.arah, h.akun, h.merchant,
         h.detail_penerima || '', h.kategori || '', h.tipe,
@@ -437,6 +514,7 @@ function syncLivin(hariKebelakang, hariOffset) {
   props.setProperty('LIVIN_SYNC_TERAKHIR', sekarang.toISOString());
   Logger.log('Sync selesai. Baru: ' + barisBaru.length +
              ' | Sudah ada: ' + dilewati +
+             ' | Digabung GoPay: ' + digabung +
              ' | Ditolak baru: ' + barisDitolak.length);
 }
 
@@ -479,11 +557,14 @@ function pasangTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'syncLivin') ScriptApp.deleteTrigger(t);
     if (t.getHandlerFunction() === 'syncBibit') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'syncWondr') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'syncGoPay') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('syncLivin').timeBased().everyHours(6).create();
   ScriptApp.newTrigger('syncBibit').timeBased().everyHours(6).create();
   ScriptApp.newTrigger('syncWondr').timeBased().everyHours(6).create();
-  Logger.log('Trigger terpasang: syncLivin + syncBibit + syncWondr tiap 6 jam.');
+  ScriptApp.newTrigger('syncGoPay').timeBased().everyHours(6).create();
+  Logger.log('Trigger terpasang: syncLivin + syncBibit + syncWondr + syncGoPay tiap 6 jam.');
 }
 
 /* ============================================================
@@ -495,6 +576,7 @@ const BIBIT_QUERY = 'from:no-reply@bibit.id newer_than:90d';
 
 /** Tes: log semua pembelian Bibit yang berhasil di-parse. */
 function tesParserBibit() {
+  Logger.log('Parser ' + PARSER_VERSI);
   const threads = GmailApp.search(BIBIT_QUERY, 0, 30);
   let ok = 0, gagal = 0;
   threads.forEach(thread => {
@@ -516,7 +598,7 @@ function parseBibit(msg) {
   if (s.indexOf('reksa dana') === -1) return null;
   if (s.indexOf('masuk') === -1 && s.indexOf('berhasil') === -1) return null;
 
-  const teks = msg.getBody()
+  const teks = normalisasiHtml_(msg.getBody())
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ');
@@ -655,6 +737,7 @@ const BULAN_WONDR = {
 
 /** Tes: log semua transaksi wondr yang berhasil di-parse. */
 function tesParserWondr() {
+  Logger.log('Parser ' + PARSER_VERSI);
   const threads = GmailApp.search(WONDR_QUERY, 0, 30);
   let ok = 0, gagal = 0;
   threads.forEach(thread => {
@@ -670,7 +753,7 @@ function tesParserWondr() {
 /** Parse satu pesan wondr. Return objek transaksi, atau null kalau bukan transaksi. */
 function parseWondr(msg) {
   const subject = msg.getSubject();
-  const html = msg.getBody();
+  const html = normalisasiHtml_(msg.getBody());
   const teksKasat = html.replace(/<[^>]+>/g, ' ');
 
   const tipe = tentukanTipeWondr(subject, teksKasat);
@@ -838,3 +921,284 @@ function backfillWondr90() { syncWondr(90); }
 function backfillSemuaLivin() { syncLivin(1095); }
 function backfillSemuaBibit() { syncBibit(1095); }
 function backfillSemuaWondr() { syncWondr(1095); }
+function backfillSemuaGoPay() { syncGoPay(1095); }
+
+/* ============================================================
+ *  PARSER GOPAY (STRUK TAGIHAN)
+ *  Email: "Riwayat transaksi tagihan GoPay" dari
+ *  no-reply@customers.go-pay.co.id. Ditulis ke tab transaksi
+ *  dengan akun 'GoPay' dan tipe 'belanja'.
+ *
+ *  Pencocokan bank: tagihan GoPay yang dibayar pakai transfer
+ *  bank (mis. Mandiri) muncul juga sebagai email Livin/wondr.
+ *  Kalau nominal + tanggal (hari WIB) SAMA dengan transaksi
+ *  bank yang sudah ada, dianggap SATU transaksi yang sama:
+ *  baris GoPay tidak ditulis dobel, baris bank diperkaya
+ *  detailnya ("GoPay: PLN Token ..."). Berlaku dua arah
+ *  (syncGoPay maupun syncLivin), jadi urutan sync bebas.
+ * ============================================================ */
+
+const GOPAY_QUERY = 'from:no-reply@customers.go-pay.co.id newer_than:90d';
+
+/** Tes: log semua struk tagihan GoPay yang berhasil di-parse. */
+function tesParserGoPay() {
+  Logger.log('Parser ' + PARSER_VERSI);
+  const threads = GmailApp.search(GOPAY_QUERY, 0, 30);
+  let ok = 0, gagal = 0;
+  threads.forEach(thread => {
+    thread.getMessages().forEach(msg => {
+      const hasil = parseGoPay(msg);
+      if (hasil) { ok++; Logger.log(JSON.stringify(hasil)); }
+      else { gagal++; Logger.log('DITOLAK: ' + msg.getSubject()); }
+    });
+  });
+  Logger.log('Selesai. Berhasil: ' + ok + ' | Ditolak: ' + gagal);
+}
+
+/** Parse satu struk tagihan GoPay. Return objek transaksi, atau null kalau bukan struk. */
+function parseGoPay(msg) {
+  const subject = String(msg.getSubject() || '');
+  if (!tentukanTipeGoPay(subject)) return null;
+
+  const html = normalisasiHtml_(msg.getBody());
+
+  // Nama produk, mis. "PLN Token" dari judul "Struk Pembayaran PLN Token"
+  let produk = '';
+  const mStruk = /Struk Pembayaran\s+([^<]{1,60})</.exec(html);
+  if (mStruk) produk = bersihkan(mStruk[1]);
+  if (!produk) {
+    const mProd = /<span[^>]*font-size:\s*16px[^>]*>([^<]{1,60})<\/span>/.exec(html);
+    if (mProd && !/^\s*Rp/i.test(mProd[1])) produk = bersihkan(mProd[1]);
+  }
+  if (!produk) return null;
+
+  // Total bawah (sudah termasuk admin bank), fallback ke total atas
+  let jumlah = null;
+  const mTot = /id="total_amount_bottom"[^>]*>\s*<strong[^>]*>([^<]+)</.exec(html);
+  if (mTot) jumlah = parseRupiah(mTot[1]);
+  if (jumlah == null) {
+    const mTop = /id="total_amount_top"[^>]*>[\s\S]{0,300}?(Rp[\d.,]+)/.exec(html);
+    if (mTop) jumlah = parseRupiah(mTop[1]);
+  }
+  if (jumlah == null || !(jumlah > 0)) return null;
+
+  let biaya = 0;
+  const mAdm = /id="admin_fee"[^>]*><span[^>]*>([^<]+)</.exec(html);
+  if (mAdm) biaya = parseRupiah(mAdm[1]) || 0;
+
+  // Tanggal struk "27 Sep 2026, 07:33" (WIB); fallback ke waktu email
+  let tanggal = null;
+  const mTgl = /id="create_date"[^>]*>\s*<small[^>]*>([^<]+)</.exec(html);
+  if (mTgl) tanggal = parseTanggalGoPay(mTgl[1]);
+  if (!tanggal) tanggal = msg.getDate();
+
+  const mId = /id="payment_id"[^>]*>([^<]+)</.exec(html);
+  const paymentId = mId
+    ? bersihkan(mId[1]).replace(/^ID Pembayaran\s*-\s*/i, '').replace(/\s+/g, '')
+    : '';
+
+  const merchant = ('GoPay ' + produk).replace(/\s+/g, ' ').trim();
+
+  return {
+    id: paymentId ? 'gopay-' + paymentId : msg.getId(),
+    email_id: msg.getId(),
+    tanggal: tanggal,
+    jumlah: jumlah,
+    biaya: biaya,
+    arah: 'out',
+    akun: 'GoPay',
+    merchant: merchant,
+    produk: produk,
+    detail_penerima: paymentId ? 'ID ' + paymentId : '',
+    kategori: null,
+    tipe: 'belanja',
+    sumber_subject: subject
+  };
+}
+
+/** Hanya struk/tagihan yang diparse; email promo/saldo GoPay lain ditolak. */
+function tentukanTipeGoPay(subject) {
+  const s = String(subject || '').toLowerCase();
+  if (s.indexOf('gopay') === -1 && s.indexOf('go-pay') === -1) return null;
+  if (s.indexOf('tagihan') !== -1 || s.indexOf('transaksi') !== -1 ||
+      s.indexOf('receipt') !== -1 || s.indexOf('pembayaran') !== -1 ||
+      s.indexOf('struk') !== -1) return 'belanja';
+  return null;
+}
+
+/** "27 Sep 2026, 07:33" -> Date (WIB = UTC+7). */
+function parseTanggalGoPay(teks) {
+  const t = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/.exec(String(teks || ''));
+  if (!t) return null;
+  let mi = BULAN[t[2]];
+  if (mi == null) mi = { May: 4, Aug: 7, Oct: 9, Dec: 11 }[t[2]];
+  if (mi == null) return null;
+  return new Date(Date.UTC(+t[3], mi, +t[1], +t[4] - 7, +t[5]));
+}
+
+/**
+ * Baca ringkasan kolom transaksi SEKALI untuk pencocokan bank <-> GoPay:
+ * [{ baris, tanggal, jumlah, akun, merchant, tipe }, ...]
+ */
+function muatIndeksCocok_(sheetT) {
+  const n = sheetT.getLastRow() - 1;
+  if (n < 1) return [];
+  const data = sheetT.getRange(2, 1, n, 10).getValues();
+  return data.map((r, i) => ({
+    baris: i + 2,
+    tanggal: r[1] instanceof Date ? r[1] : null,
+    jumlah: Number(r[2]) || 0,
+    akun: String(r[5] || ''),
+    merchant: String(r[6] || ''),
+    tipe: String(r[9] || '')
+  }));
+}
+
+/** Hari kalender WIB sebuah Date -> 'yyyy-MM-dd'. */
+function hariWIB_(d) {
+  return Utilities.formatDate(d, 'Asia/Jakarta', 'yyyy-MM-dd');
+}
+
+/**
+ * Cari baris lawan dengan nominal + hari (WIB) yang SAMA.
+ * lawan: awalan akun yang dicari (mis. ['Livin','Wondr'] atau ['GoPay']).
+ * abaikan: awalan akun sumber sendiri (jangan cocok sesama sumber).
+ * Kalau beberapa cocok, pilih yang waktunya paling dekat.
+ */
+function cariCocok_(indeks, jumlah, tanggal, lawan, abaikan) {
+  if (!(tanggal instanceof Date) || isNaN(tanggal.getTime())) return null;
+  if (!isFinite(jumlah) || !(jumlah > 0)) return null;
+  const hari = hariWIB_(tanggal);
+  let terbaik = null, selisih = Infinity;
+  indeks.forEach(r => {
+    if (!r.tanggal) return;
+    if (Math.abs(r.jumlah - jumlah) >= 1) return;   // toleransi < Rp1 (desimal)
+    if (hariWIB_(r.tanggal) !== hari) return;
+    if (r.tipe === 'transfer_internal') return;
+    let isLawan = false;
+    for (let i = 0; i < lawan.length; i++) {
+      if (r.akun.indexOf(lawan[i]) === 0) { isLawan = true; break; }
+    }
+    if (!isLawan) return;
+    for (let j = 0; j < abaikan.length; j++) {
+      if (r.akun.indexOf(abaikan[j]) === 0) return;
+    }
+    const s = Math.abs(r.tanggal.getTime() - tanggal.getTime());
+    if (s < selisih) { selisih = s; terbaik = r; }
+  });
+  return terbaik;
+}
+
+/**
+ * Perkaya baris bank yang cocok dengan info produk GoPay.
+ * Kalau merchant bank masih fallback generik, ganti sekalian.
+ */
+function tandaiCocokGoPay_(sheet, baris, h) {
+  const cur = sheet.getRange(baris, 7, 1, 2).getValues()[0]; // merchant, detail
+  const label = 'GoPay: ' + h.produk;
+  const det = String(cur[1] || '');
+  if (det.indexOf(label) === -1) {
+    sheet.getRange(baris, 8).setValue(det ? det + ' · ' + label : label);
+  }
+  const fallback = {};
+  Object.keys(FALLBACK_MERCHANT).forEach(k => { fallback[FALLBACK_MERCHANT[k]] = true; });
+  if (fallback[String(cur[0])]) sheet.getRange(baris, 7).setValue(h.merchant);
+}
+
+/** Perkaya baris GoPay yang cocok dengan info akun bank pengirim. */
+function tandaiCocokBank_(sheet, baris, h) {
+  const cur = sheet.getRange(baris, 8, 1, 1).getValues()[0][0];
+  const label = 'via ' + h.akun;
+  const det = String(cur || '');
+  if (det.indexOf(label) === -1) {
+    sheet.getRange(baris, 8).setValue(det ? det + ' · ' + label : label);
+  }
+}
+
+/**
+ * Sync utama GoPay: tarik struk tagihan, parse, dedup, cocokkan bank,
+ * tulis ke tab transaksi. Email GoPay lain dicatat di log_ditolak.
+ */
+function syncGoPay(hariKebelakang, hariOffset) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetT = ss.getSheetByName(TAB_TRANSAKSI);
+  const sheetD = ss.getSheetByName(TAB_DITOLAK);
+  if (!sheetT || !sheetD) throw new Error('Jalankan setup() dulu.');
+
+  const props = PropertiesService.getScriptProperties();
+  const terakhir = props.getProperty('GOPAY_SYNC_TERAKHIR');
+
+  let query = 'from:no-reply@customers.go-pay.co.id';
+  if (hariKebelakang) {
+    query = tambahBatasWaktu_(query, hariKebelakang, hariOffset);
+  } else if (terakhir) {
+    const tgl = new Date(new Date(terakhir).getTime() - 24 * 3600 * 1000);
+    query += ' after:' + Utilities.formatDate(tgl, 'Asia/Jakarta', 'yyyy/MM/dd');
+  } else {
+    query += ' newer_than:90d'; // sync pertama
+  }
+
+  const idAda = ambilIdAda_(sheetT);
+  const emailDitolakAda = ambilEmailIdDitolak_(sheetD);
+  const indeks = muatIndeksCocok_(sheetT);
+
+  const barisBaru = [];
+  const barisDitolak = [];
+  const sekarang = new Date();
+  let dilewati = 0, digabung = 0;
+
+  const threads = cariSemuaThread_(query);
+  threads.forEach(thread => {
+    thread.getMessages().forEach(msg => {
+      const h = parseGoPay(msg);
+
+      if (!h) {
+        const eid = msg.getId();
+        if (!emailDitolakAda[eid]) {
+          emailDitolakAda[eid] = true;
+          barisDitolak.push([
+            eid, 'gopay', msg.getSubject(),
+            'bukan struk tagihan GoPay', sekarang
+          ]);
+        }
+        return;
+      }
+
+      const id = String(h.id);
+      if (idAda[id]) { dilewati++; return; }
+      idAda[id] = true;
+
+      // Nominal + tanggal sama dengan transaksi bank = SATU transaksi
+      const cocok = cariCocok_(indeks, h.jumlah, h.tanggal, ['Livin', 'Wondr'], ['GoPay']);
+      if (cocok) {
+        tandaiCocokGoPay_(sheetT, cocok.baris, h);
+        digabung++;
+        return;
+      }
+
+      barisBaru.push([
+        id, h.tanggal, h.jumlah, h.biaya, h.arah, h.akun, h.merchant,
+        h.detail_penerima || '', h.kategori || '', h.tipe,
+        h.sumber_subject, h.email_id, sekarang
+      ]);
+    });
+  });
+
+  if (barisBaru.length) {
+    sheetT.getRange(sheetT.getLastRow() + 1, 1, barisBaru.length, KOLOM_TRANSAKSI.length)
+          .setValues(barisBaru);
+  }
+  if (barisDitolak.length) {
+    sheetD.getRange(sheetD.getLastRow() + 1, 1, barisDitolak.length, KOLOM_DITOLAK.length)
+          .setValues(barisDitolak);
+  }
+
+  props.setProperty('GOPAY_SYNC_TERAKHIR', sekarang.toISOString());
+  Logger.log('Sync GoPay selesai. Baru: ' + barisBaru.length +
+             ' | Sudah ada: ' + dilewati +
+             ' | Digabung bank: ' + digabung +
+             ' | Ditolak baru: ' + barisDitolak.length);
+}
+
+/** Backfill panjang: panggil manual, mis. syncGoPay(365). */
+function backfillGoPay90() { syncGoPay(90); }

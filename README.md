@@ -12,6 +12,7 @@ Google Sheets, tampilkan sebagai dashboard.
 | Livin' by Mandiri | `noreply.livin@bankmandiri.co.id` | belanja / top-up / transfer |
 | wondr by BNI | `wondr@bni.co.id` | top-up / belanja (VA) / transfer |
 | Bibit | `no-reply@bibit.id` | tabungan (reksa dana, terpisah dari pengeluaran) |
+| GoPay | `no-reply@customers.go-pay.co.id` | struk tagihan (mis. PLN Token → belanja, digabung dengan transfer bank yang nominal+tanggalnya sama) |
 
 **File project:**
 
@@ -26,7 +27,7 @@ Google Sheets, tampilkan sebagai dashboard.
 ## Prasyarat
 
 - Akun Google + Gmail yang menerima notifikasi transaksi.
-- Notifikasi email Livin' / wondr / Bibit dalam keadaan aktif.
+- Notifikasi email Livin' / wondr / Bibit / GoPay dalam keadaan aktif.
 - (Opsional, cara B) Node.js + `clasp` kalau mau push dari lokal.
 
 ## Cara pakai dari nol
@@ -75,9 +76,11 @@ edit lokal → `clasp push` lagi.
 Pilih fungsi `setup` → **Run**. Setujui akses yang diminta (Gmail read,
 Sheets). Ini membuat 6 tab + format kolom + seed kategori:
 
-- `transaksi` — semua transaksi Livin + wondr (kategori dihitung saat
+- `transaksi` — semua transaksi Livin + wondr + GoPay (kategori dihitung saat
   dashboard dibuka, bukan disimpan).
 - `pemasukan` — diisi manual dari dashboard.
+- `manual` — transaksi cash manual (diisi + bisa dihapus dari dashboard).
+- `catatan` — keterangan bebas per transaksi email (diisi dari dashboard).
 - `tabungan` — pembelian reksa dana Bibit.
 - `config` — aturan `kategori, kata_kunci` (boleh diedit bebas).
 - `koreksi` — koreksi kategori per merchant (diisi dari dashboard).
@@ -85,7 +88,8 @@ Sheets). Ini membuat 6 tab + format kolom + seed kategori:
 
 ### 5. Tes parser dulu
 
-Run `tesParserLivin` / `tesParserWondr` / `tesParserBibit`, lihat hasilnya
+Run `tesParserLivin` / `tesParserWondr` / `tesParserBibit` / `tesParserGoPay`,
+lihat hasilnya
 di **Log**. Harusnya ada baris JSON transaksi + ringkasan
 `Berhasil: X | Ditolak: Y`. Kalau 0 berhasil, jangan lanjut ke sync —
 cek format email / kabarin yang bikin parser.
@@ -94,17 +98,19 @@ cek format email / kabarin yang bikin parser.
 
 | Cakupan | Fungsi |
 |---|---|
-| 90 hari terakhir | `backfill90`, `backfillWondr90`, `backfillBibit90` |
-| ±3 tahun sekaligus | `backfillSemuaLivin`, `backfillSemuaWondr`, `backfillSemuaBibit` |
+| 90 hari terakhir | `backfill90`, `backfillWondr90`, `backfillBibit90`, `backfillGoPay90` |
+| ±3 tahun sekaligus | `backfillSemuaLivin`, `backfillSemuaWondr`, `backfillSemuaBibit`, `backfillSemuaGoPay` |
 
-Dedup by id transaksi, jadi aman diulang. Kalau kena
+Dedup by id transaksi, jadi aman diulang. Struk GoPay yang nominal +
+tanggalnya sama dengan transaksi bank digabung jadi satu (tidak dobel).
+Kalau kena
 `Exceeded maximum execution time` (histori ribuan email), bagi per tahun:
 `syncLivin(365)`, lalu `syncLivin(365, 365)`, lalu `syncLivin(365, 730)`
-(berlaku juga buat `syncWondr` / `syncBibit`).
+(berlaku juga buat `syncWondr` / `syncBibit` / `syncGoPay`).
 
 ### 7. Otomatisasi — run `pasangTrigger()` sekali
 
-Sejak ini `syncLivin` + `syncBibit` + `syncWondr` jalan sendiri tiap 6 jam
+Sejak ini `syncLivin` + `syncBibit` + `syncWondr` + `syncGoPay` jalan sendiri tiap 6 jam
 (inkremental, cuma narik email baru). Run ulang kapan pun aman — trigger
 lama dihapus dulu sebelum bikin baru, jadi nggak dobel.
 
@@ -116,21 +122,52 @@ lama dihapus dulu sebelum bikin baru, jadi nggak dobel.
 > Tiap habis ubah kode: **Manage deployments → edit (ikon pensil) →
 > New version**. Kalau nggak, dashboard tetap jalanin versi lama.
 
+### 9. Bikin akun login (sekali)
+
+Dashboard dilindungi halaman login (username + password). Kredensial
+**tidak ditulis di kode maupun Sheets** — disimpan sebagai hash SHA-256 +
+salt di ScriptProperties.
+
+1. Di Apps Script, run fungsi **`buatAkun()`** → isi username, password
+   (min 6 karakter), dan email pemulihan lewat prompt yang muncul.
+2. Buka URL dashboard → login.
+3. Lupa password → klik **Lupa password** → kode 6 digit (berlaku
+   15 menit) dikirim ke email pemulihan → tukar dengan password baru.
+
+Sesi login berlaku 7 hari (tersimpan di browser). Tombol **Keluar** di
+header untuk logout manual. Semua fungsi data menolak request tanpa token
+sesi yang valid.
+
+> Catatan: ini kunci level aplikasi buat pemakaian pribadi. Untuk lapis
+> tambahan, biarkan Who has access = *Only myself* (login Google) saat
+> deploy.
+
 ---
 
 ## Isi dashboard
 
 - Dropdown **Tahun** (2024–tahun berjalan) + **Bulan** (Jan–Des).
 - KPI: Pemasukan · Pengeluaran riil · **Arus kas bersih**
-  (= pemasukan − pengeluaran riil − tabungan) · Jumlah transaksi ·
+  (= pemasukan − pengeluaran riil) · Jumlah transaksi ·
   Rata-rata & **Median per hari** (median tahan outlier, dihitung dari hari
   bertransaksi) · Top-up · Menabung.
 - Grafik Per kategori & Per tipe + label persen, Top 10 merchant.
 - Kartu **Top-up e-wallet**: breakdown DANA / GoPay / ShopeePay / OVO /
   LinkAja warna brand + catatan fungsi. **Bisa diklik** buat lihat detail
-  transaksi per wallet.
-- Tabel semua transaksi + filter + **koreksi kategori per merchant**
+  transaksi per wallet. Tiap transaksi bisa diubah tipenya:
+  **Belanja/Transfer (pengeluaran)** vs **Top-up (disimpan)** + kategorinya
+  + keterangan bebas — yang sudah diubah jadi pengeluaran tetap tampil di sini.
+- Kartu **Riwayat menabung**: daftar nabung dari email yang masuk (mis. Bibit),
+  dikelompokkan per produk reksa dana. **Bisa diklik** buat lihat detail
+  tiap transaksi.
+- Tabel semua transaksi + filter + **edit tipe per transaksi**
+  (langsung ubah kolom `tipe` di tab `transaksi`, sync tidak menimpa)
+  + **keterangan bebas per transaksi** (mis. top-up buat "bayar kos",
+  tersimpan di tab `catatan`, bisa dicari lewat kolom filter)
+  + **koreksi kategori per merchant**
   (tersimpan di tab `koreksi`, berlaku ke semua transaksi merchant itu).
+  Di atas tabel ada keterangan **Terakhir diperbarui** per sumber
+  (Livin / wondr / Bibit) — diambil dari waktu sync terakhir.
 - Tambah / hapus pemasukan manual langsung dari dashboard.
 
 ## Kategori & keyword

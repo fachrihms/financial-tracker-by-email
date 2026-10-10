@@ -28,7 +28,8 @@
     header { display: flex; justify-content: space-between; align-items: center;
              flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
     h1 { font-size: 20px; margin: 0; }
-    select, input[type=search], input[type=text], input[type=number], input[type=date] {
+    select, input[type=search], input[type=text], input[type=password],
+    input[type=number], input[type=date] {
       background: var(--card); color: var(--text); border: 1px solid var(--line);
       border-radius: 8px; padding: 8px 12px; font-size: 14px; }
     .grid { display: grid; gap: 14px; }
@@ -73,6 +74,15 @@
     dialog h3 { margin: 0 0 14px; font-size: 16px; }
     dialog label.lbl { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
     dialog input, dialog select { width: 100%; }
+    dialog textarea { width: 100%; background: var(--card); color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+      font-size: 14px; font-family: inherit; min-height: 72px; resize: vertical; }
+    .ct { font-size: 12px; color: var(--accent); }
+    .wnote { font-size: 11px; color: var(--accent); margin-top: 2px; }
+    .link-note { background: transparent; border: 0; color: var(--muted); cursor: pointer;
+      font-size: 12px; padding: 0 2px; border-radius: 4px; }
+    .link-note:hover { color: var(--accent); }
+    .link-note.polos { opacity: .75; font-size: 11px; }
     .baris-btn { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .pesan { color: #dc2626; font-size: 13px; margin-top: 10px; min-height: 1em; }
 
@@ -99,7 +109,18 @@
     .tabel-scroll { max-height: 460px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
     .tabel-scroll table { min-width: 560px; }
     td select.kat { padding: 3px 6px; font-size: 12px; border-radius: 6px; }
+    td select.tipe { padding: 3px 6px; font-size: 12px; border-radius: 6px; max-width: 150px; }
+    .witem-edit { border-top: 1px dashed var(--line); padding-top: 6px; }
+    .witem-edit:first-child { border-top: 0; padding-top: 0; }
+    .wctl { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+    .wctl select { padding: 2px 6px; font-size: 11px; border-radius: 6px;
+      background: var(--card); color: var(--text); border: 1px solid var(--line); max-width: 48%; }
+    .wctl .wlab { font-size: 11px; color: var(--muted); }
     .ringkas { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    #login, #boxReset { max-width: 380px; margin: 48px auto; }
+    #login label.lbl, #boxReset label.lbl { display: block; font-size: 12px;
+      color: var(--muted); margin: 10px 0 4px; }
+    #login input, #boxReset input { width: 100%; }
     .wrow { padding: 10px 0; border-bottom: 1px solid var(--line); }
     .wrow:last-child { border-bottom: 0; }
     .watas { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -119,13 +140,19 @@
     .witem .wt { color: var(--muted); white-space: nowrap; }
     .witem .wm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .witem .wn { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cash-banner { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; background: color-mix(in srgb, var(--accent) 8%, var(--card));
+      border: 1px dashed var(--accent); margin-bottom: 14px; }
+    .cash-banner .cb-teks { font-size: 14px; }
+    .cash-banner .cb-teks small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .tag.cash { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Dashboard Pengeluaran</h1>
-    <div class="aksi">
+    <div class="aksi" id="aksi" style="display:none">
       <select id="tema" title="Tema">
         <option value="auto">Tema: Otomatis</option>
         <option value="light">Tema: Terang</option>
@@ -134,10 +161,48 @@
       <select id="tahun" title="Tahun"></select>
       <select id="bulan" title="Bulan"></select>
       <button class="primary" id="btnTambah">+ Pemasukan</button>
+      <button class="primary" id="btnCash" type="button" style="background:#059669">+ Cash</button>
+      <button class="ghost" id="btnKeluar" type="button">Keluar</button>
     </div>
   </header>
 
-  <div id="status">Memuat data…</div>
+  <div id="status" style="display:none">Memuat data…</div>
+
+  <div id="login" class="card">
+    <h2>Login</h2>
+    <label class="lbl" for="lUser">Username</label>
+    <input type="text" id="lUser" autocomplete="username">
+    <label class="lbl" for="lPass">Password</label>
+    <input type="password" id="lPass" autocomplete="current-password">
+    <div class="pesan" id="loginError"></div>
+    <div class="baris-btn">
+      <button class="ghost" id="btnLupa" type="button">Lupa password</button>
+      <button class="primary" id="btnLogin" type="button">Masuk</button>
+    </div>
+  </div>
+
+  <div id="boxReset" class="card" style="display:none">
+    <h2>Reset password</h2>
+    <div id="resetStep1">
+      <div class="sub">Kode reset (berlaku 15 menit) dikirim ke email pemulihan.</div>
+      <div class="pesan" id="resetPesan1"></div>
+      <div class="baris-btn">
+        <button class="ghost" id="btnBatalReset1" type="button">Kembali</button>
+        <button class="primary" id="btnKirimKode" type="button">Kirim kode</button>
+      </div>
+    </div>
+    <div id="resetStep2" style="display:none">
+      <label class="lbl" for="rKode">Kode 6 digit</label>
+      <input type="text" id="rKode" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+      <label class="lbl" for="rPass">Password baru (min 6 karakter)</label>
+      <input type="password" id="rPass" autocomplete="new-password">
+      <div class="pesan" id="resetPesan2"></div>
+      <div class="baris-btn">
+        <button class="ghost" id="btnBatalReset2" type="button">Kembali</button>
+        <button class="primary" id="btnResetPass" type="button">Simpan</button>
+      </div>
+    </div>
+  </div>
 
   <div id="isi" style="display:none">
     <div class="grid kpi">
@@ -183,10 +248,24 @@
     </div>
 
     <div class="card"><h2>Top-up e-wallet</h2>
+      <div class="sub" style="margin:-4px 0 8px">Klik wallet buat lihat tiap transaksi — bisa diubah jadi pengeluaran (belanja) atau tetap disimpan.</div>
       <div id="listWallet"></div>
     </div>
 
+    <div class="card"><h2>Riwayat menabung</h2>
+      <div class="sub" style="margin:-4px 0 8px">Dari email yang masuk (mis. Bibit) — klik produk buat lihat tiap transaksi.</div>
+      <div id="listTabung"></div>
+    </div>
+
+    <div class="card cash-banner">
+      <div class="cb-teks">💵 Ada transaksi di luar QRIS atau transfer? Tambah di sini ya
+        <small>Buat catat jajan cash / tunai yang nggak masuk email bank. Bisa dihapus kapan aja.</small>
+      </div>
+      <button class="primary" id="btnCash2" type="button" style="background:#059669">+ Tambah transaksi cash</button>
+    </div>
+
     <div class="card"><h2>Semua transaksi bulan ini</h2>
+      <div class="ringkas" id="infoSync" style="margin:0 0 10px"></div>
       <div class="filter">
         <input type="search" id="fCari" placeholder="Cari merchant…">
         <select id="fTipe"><option value="">Semua tipe</option></select>
@@ -225,11 +304,49 @@
   </div>
 </dialog>
 
+<!-- Dialog: tambah transaksi cash/manual -->
+<dialog id="dlgCash">
+  <h3>Tambah transaksi cash</h3>
+  <div class="sub">Ada transaksi di luar QRIS atau transfer? Tambah di sini ya — tercatat sebagai pengeluaran cash dan bisa dihapus.</div>
+  <label class="lbl" for="cTanggal">Tanggal (berlaku untuk semua baris)</label>
+  <input type="date" id="cTanggal">
+  <label class="lbl">Transaksi cash</label>
+  <div id="daftarBarisCash"></div>
+  <button class="ghost" id="btnBarisCash" type="button">+ Tambah baris</button>
+  <div id="totalCash"></div>
+  <div class="pesan" id="cashError"></div>
+  <div class="baris-btn">
+    <button class="ghost" id="btnBatalCash" type="button">Batal</button>
+    <button class="primary" id="btnSimpanCash" type="button" style="background:#059669">Simpan</button>
+  </div>
+</dialog>
+
+<!-- Dialog: keterangan bebas per transaksi (mis. top-up buat bayar kos) -->
+<dialog id="dlgCatatan">
+  <h3>Keterangan transaksi</h3>
+  <div class="sub" id="catatanCtx"></div>
+  <label class="lbl" for="fCatatan">Keterangan (mis. top-up buat bayar kos)</label>
+  <textarea id="fCatatan" maxlength="200" rows="3" placeholder="Tulis keterangan di sini…"></textarea>
+  <div class="sub">Kosongkan lalu simpan untuk menghapus keterangan.</div>
+  <div class="pesan" id="catatanError"></div>
+  <div class="baris-btn">
+    <button class="ghost" id="btnBatalCatatan" type="button">Batal</button>
+    <button class="primary" id="btnSimpanCatatan" type="button">Simpan</button>
+  </div>
+</dialog>
+
 <script>
 const RUPIAH = new Intl.NumberFormat('id-ID');
 const rp = n => 'Rp ' + RUPIAH.format(Math.round(n));
 const NAMA_BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 const RIIL = ['belanja', 'transfer'];
+// Pilihan tipe per transaksi: pengeluaran (belanja/transfer) vs disimpan (topup/internal)
+const TIPE_OPSI = [
+  { v: 'belanja', label: 'Belanja (pengeluaran)' },
+  { v: 'transfer', label: 'Transfer (pengeluaran)' },
+  { v: 'topup', label: 'Top-up (disimpan)' },
+  { v: 'transfer_internal', label: 'Internal (bukan pengeluaran)' }
+];
 const MAKS_BARIS = 20;                       // samakan dengan MAKS_BARIS_PEMASUKAN di server
 const WARNA = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#64748b'];
 
@@ -274,7 +391,7 @@ function labelTooltipPersen(c) {
   return c.label + ': ' + rp(c.parsed) + ' (' + p + '%)';
 }
 
-let DATA = [], PEMASUKAN = [], TABUNGAN = [], SUMBER = [], KATEGORI = [];
+let DATA = [], PEMASUKAN = [], TABUNGAN = [], SUMBER = [], KATEGORI = [], MANUAL = [];
 let chartTren = null, chartTipe = null, chartKat = null;
 
 function kunciBulan(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
@@ -306,16 +423,34 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 function muat(setelahMuat) {
   google.script.run
     .withSuccessHandler(d => {
-      DATA = d.transaksi.map(t => ({ ...t, tgl: new Date(t.tanggal) }));
+      const email = d.transaksi.map(t => ({ ...t, tgl: new Date(t.tanggal) }));
+      MANUAL = (d.manual || []).map(p => ({ ...p, tgl: new Date(p.tanggal) }));
+      // Gabung transaksi cash ke DATA supaya ikut KPI, grafik, dan tabel
+      const cash = MANUAL.map(p => ({
+        id: 'manual-' + p.baris,
+        tanggal: p.tanggal,
+        tgl: p.tgl,
+        jumlah: p.jumlah,
+        biaya: 0,
+        akun: 'Cash',
+        merchant: p.keterangan || 'Transaksi cash',
+        detail: 'Transaksi cash (manual)',
+        tipe: 'belanja',
+        kategori: p.kategori || 'Lainnya',
+        manual: true,
+        baris: p.baris
+      }));
+      DATA = email.concat(cash);
       PEMASUKAN = d.pemasukan.map(p => ({ ...p, tgl: new Date(p.tanggal) }));
       TABUNGAN = (d.tabungan || []).map(p => ({ ...p, tgl: new Date(p.tanggal) }));
       setelahMuat();
     })
     .withFailureHandler(e => {
+      if (sesiHabis(e)) return;
       document.getElementById('status').style.display = 'block';
       document.getElementById('status').textContent = 'Gagal memuat data: ' + e.message;
     })
-    .ambilData();
+    .ambilData(SESI);
 }
 
 function kunciDipilih() {
@@ -325,7 +460,8 @@ function kunciDipilih() {
 function isiPeriode(pertahankan) {
   const semua = DATA.map(t => kunciBulan(t.tgl))
     .concat(PEMASUKAN.map(p => kunciBulan(p.tgl)))
-    .concat(TABUNGAN.map(p => kunciBulan(p.tgl)));
+    .concat(TABUNGAN.map(p => kunciBulan(p.tgl)))
+    .concat(MANUAL.map(p => kunciBulan(p.tgl)));
   const ada = [...new Set(semua)].sort().reverse();
   const sekarang = new Date();
   const bawaan = ada.length ? ada[0] : kunciBulan(sekarang);
@@ -358,8 +494,9 @@ function tampilkan() {
 
 function mulai() {
   if (!isiPeriode(null)) {
-    document.getElementById('status').textContent =
-      'Belum ada transaksi. Jalankan syncLivin di Apps Script dulu.';
+    const st = document.getElementById('status');
+    st.textContent = 'Belum ada transaksi. Jalankan syncLivin di Apps Script dulu.';
+    st.style.display = 'block';
     return;
   }
   tampilkan();
@@ -417,7 +554,7 @@ function render() {
 
   const masuk = PEMASUKAN.filter(p => kunciBulan(p.tgl) === k);
   const totalMasuk = masuk.reduce((s, p) => s + p.jumlah, 0);
-  const bersih = totalMasuk - total - totalTabung;
+  const bersih = totalMasuk - total;
 
   document.getElementById('kpiMasuk').textContent = totalMasuk ? rp(totalMasuk) : '–';
   document.getElementById('kpiMasukSub').textContent = masuk.length
@@ -428,12 +565,15 @@ function render() {
   elBersih.textContent = totalMasuk ? rp(bersih) : '–';
   elBersih.className = 'big ' + (totalMasuk ? (bersih >= 0 ? 'pos' : 'neg') : '');
   document.getElementById('kpiBersihSub').textContent = totalMasuk
-    ? 'pemasukan dikurangi pengeluaran riil dan tabungan' : 'butuh data pemasukan';
+    ? 'pemasukan dikurangi pengeluaran riil' : 'butuh data pemasukan';
 
   renderTren(riil, hariDlmBulan);
   renderKategori(riil);
   renderTipe(bulanIni);
-  renderWallet(topup);
+  // Kartu e-wallet: semua transaksi e-wallet (top-up maupun yang sudah
+  // diubah jadi pengeluaran) tetap tampil di sini
+  renderWallet(bulanIni.filter(t => t.tipe === 'topup' || deteksiEwallet(t.merchant) !== 'Lainnya'));
+  renderTabungan(tabung);
   renderMerchant(riil);
   renderTabel(bulanIni);
 }
@@ -517,28 +657,47 @@ function renderMerchant(riil) {
                            `<td class="num">${rp(a.total)}</td></tr>`).join('');
 }
 
-function renderWallet(topup) {
+function renderWallet(daftar) {
   const agg = {};
-  topup.forEach(t => {
+  daftar.forEach(t => {
     const w = deteksiEwallet(t.merchant);
     const a = agg[w] || (agg[w] = { total: 0, n: 0, items: [] });
     a.total += t.jumlah; a.n++;
     a.items.push(t);
   });
-  const total = topup.reduce((s, t) => s + t.jumlah, 0);
+  const total = daftar.reduce((s, t) => s + t.jumlah, 0);
   const urut = Object.keys(EWALLET_INFO).filter(w => agg[w]);
+  const LABEL_SINGKAT = { topup: 'top-up', belanja: 'belanja', transfer: 'transfer', transfer_internal: 'internal' };
 
   document.getElementById('listWallet').innerHTML = urut.length ? urut.map(w => {
     const info = EWALLET_INFO[w];
     const p = total ? Math.round(agg[w].total / total * 100) : 0;
-    const ket = [info.catatan, agg[w].n + '× top-up'].filter(Boolean).join(' · ');
+    const hit = {};
+    agg[w].items.forEach(t => { hit[t.tipe] = (hit[t.tipe] || 0) + 1; });
+    const ket = [info.catatan]
+      .concat(Object.keys(hit).map(k => hit[k] + '× ' + (LABEL_SINGKAT[k] || k)))
+      .filter(Boolean).join(' · ');
     const det = agg[w].items.sort((a, b) => b.tgl - a.tgl).map(t => {
       const jam = String(t.tgl.getHours()).padStart(2, '0') + ':' +
                   String(t.tgl.getMinutes()).padStart(2, '0');
-      return `<div class="witem"><span class="wt">${t.tgl.getDate()} ` +
+      const opsiTipe = TIPE_OPSI.map(o =>
+        `<option value="${o.v}"${o.v === t.tipe ? ' selected' : ''}>${o.label}</option>`).join('');
+      const ctlKat = t.tipe === 'topup'
+        ? '<span class="wlab">Kategori: Top-up</span>'
+        : `<select class="wkat" data-merchant="${esc(t.merchant)}" title="Kategori (berlaku semua transaksi merchant ini)">` +
+          KATEGORI.map(x => `<option value="${esc(x)}"${x === t.kategori ? ' selected' : ''}>${esc(x)}</option>`).join('') +
+          '</select>';
+      const ketW = t.catatan
+        ? `<div class="wnote">📝 ${esc(t.catatan)} ` +
+          `<button type="button" class="link-note edit-catatan" data-id="${esc(t.id)}" title="Ubah keterangan">✎</button></div>`
+        : `<div><button type="button" class="link-note polos edit-catatan" data-id="${esc(t.id)}" ` +
+          `title="Tambah keterangan (mis. top-up buat bayar kos)">+ keterangan</button></div>`;
+      return `<div class="witem-edit"><div class="witem"><span class="wt">${t.tgl.getDate()} ` +
         `${NAMA_BULAN[t.tgl.getMonth()]} ${jam}</span>` +
         `<span class="wm">${esc(t.merchant)}</span>` +
-        `<span class="wn">${rp(t.jumlah)}</span></div>`;
+        `<span class="wn">${rp(t.jumlah)}</span></div>` + ketW +
+        `<div class="wctl"><select class="wtipe" data-id="${esc(t.id)}" title="Pengeluaran atau disimpan?">${opsiTipe}</select>` +
+        ctlKat + '</div></div>';
     }).join('');
     return `<div class="wrow" data-bisa title="Klik untuk lihat detail transaksi"><div class="watas">` +
       `<span class="wdot" style="background:${info.warna}"></span><b>${esc(w)}</b>` +
@@ -547,10 +706,92 @@ function renderWallet(topup) {
       `<div class="wbar"><div class="wfill" style="width:${p}%;background:${info.warna}"></div></div>` +
       (ket ? `<div class="wcat">${esc(ket)}</div>` : '') +
       `<div class="wdetail" hidden>${det}</div></div>`;
-  }).join('') : '<div class="sub">Belum ada top-up bulan ini.</div>';
+  }).join('') : '<div class="sub">Belum ada transaksi e-wallet bulan ini.</div>';
 
   // Klik baris wallet = buka/tutup detail transaksinya
   document.querySelectorAll('#listWallet .wrow').forEach(row => {
+    row.onclick = () => {
+      const d = row.querySelector('.wdetail');
+      const buka = d.hidden;
+      d.hidden = !buka;
+      row.querySelector('.wchev').textContent = buka ? '▾' : '▸';
+    };
+  });
+
+  // Dropdown di dalam detail jangan ikut toggle buka/tutup
+  document.querySelectorAll('#listWallet .wdetail select').forEach(sel => {
+    sel.onclick = e => e.stopPropagation();
+  });
+
+  // Ubah tipe per transaksi e-wallet: pengeluaran vs disimpan
+  document.querySelectorAll('#listWallet select.wtipe').forEach(sel => {
+    sel.onchange = () => {
+      const id = sel.dataset.id, tipe = sel.value;
+      sel.disabled = true;
+      google.script.run
+        .withSuccessHandler(() => muatUlangDanTampil())
+        .withFailureHandler(e => {
+          if (sesiHabis(e)) return;
+          sel.disabled = false; alert('Gagal menyimpan tipe: ' + e.message);
+        })
+        .simpanTipe(SESI, id, tipe);
+    };
+  });
+
+  // Ubah kategori per merchant dari kartu e-wallet (khusus yang sudah jadi belanja)
+  document.querySelectorAll('#listWallet select.wkat').forEach(sel => {
+    sel.onchange = () => {
+      const merchant = sel.dataset.merchant, kategori = sel.value;
+      sel.disabled = true;
+      google.script.run
+        .withSuccessHandler(() => muatUlangDanTampil())
+        .withFailureHandler(e => {
+          if (sesiHabis(e)) return;
+          sel.disabled = false; alert('Gagal menyimpan kategori: ' + e.message);
+        })
+        .simpanKoreksi(SESI, merchant, kategori);
+    };
+  });
+
+  // Tombol keterangan di kartu e-wallet (jangan ikut toggle buka/tutup)
+  document.querySelectorAll('#listWallet .edit-catatan').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); bukaCatatan(b.dataset.id); };
+  });
+}
+
+/* ---------- Riwayat menabung (dari email, mis. Bibit) ---------- */
+function renderTabungan(tabung) {
+  const agg = {};
+  tabung.forEach(p => {
+    const nama = (p.produk || '').trim() || (p.sumber || '').trim() || 'Tabungan';
+    const a = agg[nama] || (agg[nama] = { total: 0, n: 0, items: [] });
+    a.total += p.jumlah; a.n++;
+    a.items.push(p);
+  });
+  const total = tabung.reduce((s, p) => s + p.jumlah, 0);
+  const urut = Object.keys(agg).sort((a, b) => agg[b].total - agg[a].total);
+
+  document.getElementById('listTabung').innerHTML = urut.length ? urut.map(nama => {
+    const p = total ? Math.round(agg[nama].total / total * 100) : 0;
+    const det = agg[nama].items.sort((a, b) => b.tgl - a.tgl).map(t => {
+      const jam = String(t.tgl.getHours()).padStart(2, '0') + ':' +
+                  String(t.tgl.getMinutes()).padStart(2, '0');
+      return `<div class="witem"><span class="wt">${t.tgl.getDate()} ` +
+        `${NAMA_BULAN[t.tgl.getMonth()]} ${jam}</span>` +
+        `<span class="wm">${esc(t.sumber || 'Tabungan')}</span>` +
+        `<span class="wn">${rp(t.jumlah)}</span></div>`;
+    }).join('');
+    return `<div class="wrow" data-bisa title="Klik untuk lihat detail transaksi"><div class="watas">` +
+      `<span class="wdot" style="background:#059669"></span><b>${esc(nama)}</b>` +
+      `<span class="wnom">${rp(agg[nama].total)} · ${p}%</span>` +
+      `<span class="wchev">▸</span></div>` +
+      `<div class="wbar"><div class="wfill" style="width:${p}%;background:#059669"></div></div>` +
+      `<div class="wcat">${agg[nama].n}× nabung</div>` +
+      `<div class="wdetail" hidden>${det}</div></div>`;
+  }).join('') : '<div class="sub">Belum ada tabungan bulan ini.</div>';
+
+  // Klik baris produk = buka/tutup detail transaksinya
+  document.querySelectorAll('#listTabung .wrow').forEach(row => {
     row.onclick = () => {
       const d = row.querySelector('.wdetail');
       const buka = d.hidden;
@@ -582,28 +823,59 @@ function renderTabel(bulanIni) {
   const fKat = document.getElementById('fKat').value;
 
   const baris = bulanIni
-    .filter(t => (!cari || t.merchant.toLowerCase().includes(cari)) &&
+    .filter(t => (!cari || t.merchant.toLowerCase().includes(cari) ||
+                         (t.catatan || '').toLowerCase().includes(cari)) &&
                  (!fTipe || t.tipe === fTipe) && (!fKat || t.kategori === fKat))
     .sort((a, b) => b.tgl - a.tgl);
 
   document.getElementById('tSemua').innerHTML =
-    '<tr><th>Tanggal</th><th>Merchant</th><th>Tipe</th><th>Kategori</th><th class="num">Jumlah</th></tr>' +
+    '<tr><th>Tanggal</th><th>Merchant</th><th>Tipe</th><th>Kategori</th><th class="num">Jumlah</th><th></th></tr>' +
     baris.map(t => {
       const jam = String(t.tgl.getHours()).padStart(2, '0') + ':' + String(t.tgl.getMinutes()).padStart(2, '0');
       const kolomKat = t.tipe === 'topup'
         ? '<span class="tag topup">Top-up</span>'
-        : `<select class="kat" data-merchant="${esc(t.merchant)}">` +
+        : t.manual
+          ? esc(t.kategori)
+          : `<select class="kat" data-merchant="${esc(t.merchant)}" title="Kategori (berlaku semua transaksi merchant ini)">` +
             KATEGORI.map(x => `<option value="${esc(x)}"${x === t.kategori ? ' selected' : ''}>${esc(x)}</option>`).join('') +
           '</select>';
+      const kolomTipe = t.manual
+        ? '<span class="tag">belanja</span> <span class="tag cash">Cash</span>'
+        : `<select class="tipe" data-id="${esc(t.id)}" title="Pengeluaran atau disimpan?">` +
+          TIPE_OPSI.map(o => `<option value="${o.v}"${o.v === t.tipe ? ' selected' : ''}>${o.label}</option>`).join('') +
+          '</select>';
+      const kolomAksi = t.manual
+        ? `<button class="ghost kecil hapus-cash" data-baris="${t.baris}" title="Hapus transaksi cash ini">Hapus</button>`
+        : '';
+      const ketCatatan = t.manual ? '' : t.catatan
+        ? `<br><span class="ct">📝 ${esc(t.catatan)}</span> ` +
+          `<button type="button" class="link-note edit-catatan" data-id="${esc(t.id)}" title="Ubah keterangan">✎</button>`
+        : `<br><button type="button" class="link-note polos edit-catatan" data-id="${esc(t.id)}" ` +
+          `title="Tambah keterangan (mis. top-up buat bayar kos)">+ keterangan</button>`;
       return `<tr><td>${t.tgl.getDate()} ${NAMA_BULAN[t.tgl.getMonth()]} ${jam}</td>` +
-        `<td>${esc(t.merchant)}</td>` +
-        `<td><span class="tag ${t.tipe === 'topup' ? 'topup' : ''}">${esc(t.tipe)}</span></td>` +
-        `<td>${kolomKat}</td><td class="num">${rp(t.jumlah)}</td></tr>`;
+        `<td>${esc(t.merchant)}${t.detail ? `<br><span class="sub">${esc(t.detail)}</span>` : ''}${ketCatatan}</td>` +
+        `<td>${kolomTipe}</td>` +
+        `<td>${kolomKat}</td><td class="num">${rp(t.jumlah)}</td><td>${kolomAksi}</td></tr>`;
     }).join('');
 
   const jumlahTampil = baris.reduce((s, t) => s + (RIIL.includes(t.tipe) ? t.jumlah : 0), 0);
   document.getElementById('ringkasTabel').textContent =
     baris.length + ' dari ' + bulanIni.length + ' transaksi · total pengeluaran riil yang tampil: ' + rp(jumlahTampil);
+
+  // Ubah tipe per transaksi: pengeluaran (belanja/transfer) vs disimpan (topup)
+  document.querySelectorAll('#tSemua select.tipe').forEach(sel => {
+    sel.onchange = () => {
+      const id = sel.dataset.id, tipe = sel.value;
+      sel.disabled = true;
+      google.script.run
+        .withSuccessHandler(() => muatUlangDanTampil())
+        .withFailureHandler(e => {
+          if (sesiHabis(e)) return;
+          sel.disabled = false; alert('Gagal menyimpan tipe: ' + e.message);
+        })
+        .simpanTipe(SESI, id, tipe);
+    };
+  });
 
   // Ubah kategori: berlaku untuk SEMUA transaksi merchant yang sama
   document.querySelectorAll('#tSemua select.kat').forEach(sel => {
@@ -615,8 +887,35 @@ function renderTabel(bulanIni) {
           DATA.forEach(t => { if (t.merchant.toLowerCase() === merchant.toLowerCase()) t.kategori = kategori; });
           render();
         })
-        .withFailureHandler(e => { sel.disabled = false; alert('Gagal menyimpan kategori: ' + e.message); })
-        .simpanKoreksi(merchant, kategori);
+        .withFailureHandler(e => {
+          if (sesiHabis(e)) return;
+          sel.disabled = false; alert('Gagal menyimpan kategori: ' + e.message);
+        })
+        .simpanKoreksi(SESI, merchant, kategori);
+    };
+  });
+
+  // Tombol keterangan per transaksi
+  document.querySelectorAll('#tSemua .edit-catatan').forEach(b => {
+    b.onclick = () => bukaCatatan(b.dataset.id);
+  });
+
+  // Hapus transaksi cash: hanya baris manual yang punya tombol Hapus
+  document.querySelectorAll('#tSemua .hapus-cash').forEach(btn => {
+    btn.onclick = () => {
+      const target = MANUAL.find(x => x.baris === Number(btn.dataset.baris));
+      if (!target) return;
+      if (!confirm('Hapus transaksi cash ' + rp(target.jumlah) + ' (' + target.keterangan + ')?')) return;
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(() => muatUlangDanTampil())
+        .withFailureHandler(e => {
+          if (sesiHabis(e)) return;
+          btn.disabled = false;
+          alert('Gagal menghapus: ' + e.message);
+        })
+        .hapusManual(SESI, [{ baris: target.baris, tanggal: target.tanggal,
+                              jumlah: target.jumlah, keterangan: target.keterangan }]);
     };
   });
 }
@@ -712,10 +1011,137 @@ document.getElementById('btnSimpan').onclick = () => {
       muatUlangDanTampil();
     })
     .withFailureHandler(e => {
+      if (sesiHabis(e)) return;
       btn.disabled = false; btn.textContent = 'Simpan';
       err.textContent = e.message || 'Gagal menyimpan.';
     })
-    .tambahPemasukan({ tanggal: tanggal, baris: baris });
+    .tambahPemasukan(SESI, { tanggal: tanggal, baris: baris });
+};
+
+/* ---------- Form tambah transaksi cash (banyak baris, bisa dihapus) ---------- */
+const dlgCash = document.getElementById('dlgCash');
+const wadahCash = document.getElementById('daftarBarisCash');
+
+function tambahBarisCash() {
+  if (wadahCash.children.length >= MAKS_BARIS) return;
+  const daftarKat = KATEGORI.length ? KATEGORI : ['Belanja', 'Belanja Makan', 'Belanja Online', 'Transport', 'Tagihan', 'Lainnya'];
+  const div = document.createElement('div');
+  div.className = 'brs';
+  div.innerHTML =
+    '<div class="brs-atas"><span class="no"></span>' +
+    '<button type="button" class="btn-x" title="Hapus baris" aria-label="Hapus baris">×</button></div>' +
+    '<div class="brs-isi">' +
+      '<input type="number" class="jml" inputmode="numeric" min="1" step="1" placeholder="Jumlah (Rp)">' +
+      '<select class="katCash">' + daftarKat.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('') + '</select>' +
+    '</div>' +
+    '<input type="text" class="ket" maxlength="200" placeholder="Keterangan, mis. Parkir cash / Jajan pasar">';
+  div.querySelector('.btn-x').onclick = () => { div.remove(); segarkanBarisCash(); };
+  div.querySelector('.jml').oninput = segarkanBarisCash;
+  wadahCash.appendChild(div);
+  segarkanBarisCash();
+  div.querySelector('.jml').focus();
+}
+
+function segarkanBarisCash() {
+  const semua = [...wadahCash.children];
+  semua.forEach((el, i) => {
+    el.querySelector('.no').textContent = 'Cash ' + (i + 1);
+    el.querySelector('.btn-x').hidden = semua.length === 1;
+  });
+  document.getElementById('btnBarisCash').disabled = semua.length >= MAKS_BARIS;
+  const total = semua.reduce((s, el) => s + (Number(el.querySelector('.jml').value) || 0), 0);
+  document.getElementById('totalCash').textContent = total > 0 ? 'Total: ' + rp(total) : '';
+}
+
+function bukaDialogCash() {
+  document.getElementById('cTanggal').value = hariIniLokal();
+  document.getElementById('cashError').textContent = '';
+  wadahCash.innerHTML = '';
+  tambahBarisCash();
+  dlgCash.showModal();
+}
+
+document.getElementById('btnBarisCash').onclick = tambahBarisCash;
+document.getElementById('btnCash').onclick = bukaDialogCash;
+document.getElementById('btnCash2').onclick = bukaDialogCash;
+document.getElementById('btnBatalCash').onclick = () => dlgCash.close();
+
+document.getElementById('btnSimpanCash').onclick = () => {
+  const btn = document.getElementById('btnSimpanCash');
+  const err = document.getElementById('cashError');
+  const tanggal = document.getElementById('cTanggal').value;
+  const baris = [...wadahCash.children].map(el => ({
+    jumlah: el.querySelector('.jml').value,
+    keterangan: el.querySelector('.ket').value,
+    kategori: el.querySelector('.katCash').value
+  }));
+
+  if (!tanggal) { err.textContent = 'Tanggal wajib diisi.'; return; }
+  for (let i = 0; i < baris.length; i++) {
+    if (!(Number(baris[i].jumlah) > 0)) {
+      err.textContent = 'Cash ' + (i + 1) + ': jumlah harus lebih dari 0.';
+      return;
+    }
+    if (!String(baris[i].keterangan || '').trim()) {
+      err.textContent = 'Cash ' + (i + 1) + ': keterangan wajib diisi.';
+      return;
+    }
+  }
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; err.textContent = '';
+
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false; btn.textContent = 'Simpan';
+      dlgCash.close();
+      muatUlangDanTampil();
+    })
+    .withFailureHandler(e => {
+      if (sesiHabis(e)) return;
+      btn.disabled = false; btn.textContent = 'Simpan';
+      err.textContent = e.message || 'Gagal menyimpan.';
+    })
+    .tambahManual(SESI, { tanggal: tanggal, baris: baris });
+};
+
+/* ---------- Keterangan bebas per transaksi ---------- */
+const dlgCatatan = document.getElementById('dlgCatatan');
+let CATATAN_EDIT_ID = null;
+
+function bukaCatatan(id) {
+  const t = DATA.find(x => !x.manual && String(x.id) === String(id));
+  if (!t) return;
+  CATATAN_EDIT_ID = t.id;
+  const jam = String(t.tgl.getHours()).padStart(2, '0') + ':' + String(t.tgl.getMinutes()).padStart(2, '0');
+  document.getElementById('catatanCtx').textContent =
+    t.merchant + ' · ' + rp(t.jumlah) + ' · ' + t.tgl.getDate() + ' ' +
+    NAMA_BULAN[t.tgl.getMonth()] + ' ' + jam;
+  document.getElementById('fCatatan').value = t.catatan || '';
+  document.getElementById('catatanError').textContent = '';
+  dlgCatatan.showModal();
+  document.getElementById('fCatatan').focus();
+}
+
+document.getElementById('btnBatalCatatan').onclick = () => dlgCatatan.close();
+
+document.getElementById('btnSimpanCatatan').onclick = () => {
+  const btn = document.getElementById('btnSimpanCatatan');
+  const err = document.getElementById('catatanError');
+  const teks = document.getElementById('fCatatan').value;
+  if (!CATATAN_EDIT_ID) { err.textContent = 'Transaksi tidak ditemukan.'; return; }
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; err.textContent = '';
+
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false; btn.textContent = 'Simpan';
+      dlgCatatan.close();
+      muatUlangDanTampil();
+    })
+    .withFailureHandler(e => {
+      if (sesiHabis(e)) return;
+      btn.disabled = false; btn.textContent = 'Simpan';
+      err.textContent = e.message || 'Gagal menyimpan.';
+    })
+    .simpanCatatan(SESI, CATATAN_EDIT_ID, teks);
 };
 
 /* ---------- Kelola & reset pemasukan ---------- */
@@ -765,11 +1191,12 @@ function jalankanHapus(daftar, tombol) {
       });
     })
     .withFailureHandler(e => {
+      if (sesiHabis(e)) return;
       err.textContent = e.message || 'Gagal menghapus.';
       if (tombol) tombol.disabled = false;
       document.getElementById('btnResetBulan').disabled = false;
     })
-    .hapusPemasukan(daftar.map(p => ({ baris: p.baris, tanggal: p.tanggal, jumlah: p.jumlah, sumber: p.sumber })));
+    .hapusPemasukan(SESI, daftar.map(p => ({ baris: p.baris, tanggal: p.tanggal, jumlah: p.jumlah, sumber: p.sumber })));
 }
 
 document.getElementById('btnKelola').onclick = () => {
@@ -790,9 +1217,167 @@ document.getElementById('btnResetBulan').onclick = () => {
   jalankanHapus(daftar, null);
 };
 
-/* ---------- Mulai ---------- */
-google.script.run.withSuccessHandler(d => { SUMBER = d; }).ambilSumberPemasukan();
-google.script.run.withSuccessHandler(d => { KATEGORI = d; muat(mulai); }).ambilDaftarKategori();
+/* ---------- Login, sesi & mulai ---------- */
+let SESI = null;
+
+function ingatSesi() { try { return localStorage.getItem('SESI'); } catch (e) { return null; } }
+function simpanSesi(t) { try { localStorage.setItem('SESI', t); } catch (e) {} }
+function buangSesi() { try { localStorage.removeItem('SESI'); } catch (e) {} }
+
+function tampilLogin(pesan) {
+  document.getElementById('aksi').style.display = 'none';
+  document.getElementById('isi').style.display = 'none';
+  document.getElementById('status').style.display = 'none';
+  document.getElementById('boxReset').style.display = 'none';
+  document.getElementById('login').style.display = 'block';
+  document.getElementById('loginError').textContent = pesan || '';
+}
+
+/** Kalau error karena sesi habis/kadaluarsa: buang sesi, kembali ke login. */
+function sesiHabis(e) {
+  if (e && /sesi/i.test(e.message || '')) {
+    buangSesi(); SESI = null;
+    tampilLogin('Sesi habis. Silakan login ulang.');
+    return true;
+  }
+  return false;
+}
+
+function gagalBoot(e) {
+  if (!sesiHabis(e)) tampilLogin(e && e.message ? e.message : 'Gagal memuat.');
+}
+
+function masukDashboard() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('boxReset').style.display = 'none';
+  document.getElementById('aksi').style.display = '';
+  google.script.run
+    .withSuccessHandler(d => { SUMBER = d; })
+    .withFailureHandler(gagalBoot)
+    .ambilSumberPemasukan(SESI);
+  google.script.run
+    .withSuccessHandler(d => { KATEGORI = d; muat(mulai); })
+    .withFailureHandler(gagalBoot)
+    .ambilDaftarKategori(SESI);
+  google.script.run
+    .withSuccessHandler(tampilStatusSync)
+    .withFailureHandler(gagalBoot)
+    .ambilStatusSync(SESI);
+}
+
+function tampilStatusSync(s) {
+  const fmt = iso => {
+    if (!iso) return 'belum pernah';
+    const d = new Date(iso);
+    return d.getDate() + ' ' + NAMA_BULAN[d.getMonth()] + ' ' + d.getFullYear() + ' ' +
+      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  document.getElementById('infoSync').textContent =
+    'Terakhir diperbarui — Livin: ' + fmt(s.livin) +
+    ' · wondr: ' + fmt(s.wondr) + ' · Bibit: ' + fmt(s.bibit) +
+    ' · GoPay: ' + fmt(s.gopay);
+}
+
+function jalankanLogin() {
+  const u = document.getElementById('lUser').value.trim();
+  const p = document.getElementById('lPass').value;
+  const err = document.getElementById('loginError');
+  if (!u || !p) { err.textContent = 'Isi username dan password.'; return; }
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = true; btn.textContent = 'Masuk…'; err.textContent = '';
+  google.script.run
+    .withSuccessHandler(r => {
+      btn.disabled = false; btn.textContent = 'Masuk';
+      SESI = r.token; simpanSesi(SESI);
+      document.getElementById('lPass').value = '';
+      masukDashboard();
+    })
+    .withFailureHandler(e => {
+      btn.disabled = false; btn.textContent = 'Masuk';
+      err.textContent = e.message || 'Gagal login.';
+    })
+    .login(u, p);
+}
+
+document.getElementById('btnLogin').onclick = jalankanLogin;
+document.getElementById('lPass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') jalankanLogin();
+});
+document.getElementById('lUser').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('lPass').focus();
+});
+
+document.getElementById('btnKeluar').onclick = () => {
+  const t = SESI; SESI = null; buangSesi();
+  if (t) google.script.run.keluar(t);
+  location.reload();
+};
+
+/* ----- Lupa password: kirim kode ke email -> tukar dengan password baru ----- */
+document.getElementById('btnLupa').onclick = () => {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('boxReset').style.display = 'block';
+  document.getElementById('resetStep1').style.display = 'block';
+  document.getElementById('resetStep2').style.display = 'none';
+  document.getElementById('resetPesan1').textContent = '';
+  document.getElementById('resetPesan2').textContent = '';
+};
+const kembaliLogin = () => tampilLogin();
+document.getElementById('btnBatalReset1').onclick = kembaliLogin;
+document.getElementById('btnBatalReset2').onclick = kembaliLogin;
+
+document.getElementById('btnKirimKode').onclick = () => {
+  const btn = document.getElementById('btnKirimKode');
+  const pesan = document.getElementById('resetPesan1');
+  btn.disabled = true; btn.textContent = 'Mengirim…'; pesan.textContent = '';
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false; btn.textContent = 'Kirim kode';
+      document.getElementById('resetStep1').style.display = 'none';
+      document.getElementById('resetStep2').style.display = 'block';
+    })
+    .withFailureHandler(e => {
+      btn.disabled = false; btn.textContent = 'Kirim kode';
+      pesan.textContent = e.message || 'Gagal mengirim kode.';
+    })
+    .mintaReset();
+};
+
+document.getElementById('btnResetPass').onclick = () => {
+  const kode = document.getElementById('rKode').value.trim();
+  const baru = document.getElementById('rPass').value;
+  const pesan = document.getElementById('resetPesan2');
+  if (kode.length !== 6 || baru.length < 6) {
+    pesan.textContent = 'Kode harus 6 digit dan password min 6 karakter.';
+    return;
+  }
+  const btn = document.getElementById('btnResetPass');
+  btn.disabled = true; btn.textContent = 'Menyimpan…'; pesan.textContent = '';
+  google.script.run
+    .withSuccessHandler(() => {
+      btn.disabled = false; btn.textContent = 'Simpan';
+      document.getElementById('rKode').value = '';
+      document.getElementById('rPass').value = '';
+      tampilLogin('Password baru tersimpan. Silakan login.');
+    })
+    .withFailureHandler(e => {
+      btn.disabled = false; btn.textContent = 'Simpan';
+      pesan.textContent = e.message || 'Gagal reset password.';
+    })
+    .resetPassword(kode, baru);
+};
+
+/* ---------- Mulai: coba sesi tersimpan, kalau tidak valid tampilkan login ---------- */
+(function () {
+  const t = ingatSesi();
+  if (t) {
+    SESI = t;
+    google.script.run
+      .withSuccessHandler(() => masukDashboard())
+      .withFailureHandler(() => { SESI = null; buangSesi(); tampilLogin(); })
+      .ambilDaftarKategori(SESI);
+  } else tampilLogin();
+})();
 </script>
 </body>
 </html>
