@@ -2,6 +2,7 @@
 
 Catat pengeluaran otomatis dari email notifikasi bank/e-wallet, simpan ke
 Google Sheets, tampilkan sebagai dashboard.
+![Dashboard Preview](assets/tutorial_11.png)
 
 **Alur:** Gmail → Apps Script (parse) → Spreadsheet → Dashboard web app.
 
@@ -37,11 +38,15 @@ Google Sheets, tampilkan sebagai dashboard.
 Buat Google Sheets baru. Ini yang jadi database (semua tab dibikin otomatis
 oleh `setup()`).
 
+
 ### 2. Buka Apps Script
 
 Di spreadsheet: **Ekstensi → Apps Script**. Project ini **harus bound**
 (menempel ke spreadsheet) karena kode memakai `getActiveSpreadsheet()`.
-Jangan bikin project standalone dari script.google.com.
+
+Jangan bikin project standalone dari script.google.com!
+
+![setup google sheets](assets/tutorial_1.png)
 
 ### 3. Masukkan 3 file project (pilih salah satu)
 
@@ -52,6 +57,8 @@ Jangan bikin project standalone dari script.google.com.
 2. Tombol `+` → **Script** → nama `dashboard` → paste isi `dashboard.js`.
 3. Tombol `+` → **HTML** → nama `Index` → paste isi `index.html`.
 4. Save (Ctrl+S).
+
+![buat files](assets/tutorial_2.png)
 
 #### Cara B — `clasp push` (kayak import, tanpa copy-paste)
 
@@ -86,6 +93,8 @@ Sheets). Ini membuat 6 tab + format kolom + seed kategori:
 - `koreksi` — koreksi kategori per merchant (diisi dari dashboard).
 - `log_ditolak` — email yang gagal di-parse + alasannya.
 
+![setup data](assets/tutorial_3.png)
+
 ### 5. Tes parser dulu
 
 Run `tesParserLivin` / `tesParserWondr` / `tesParserBibit` / `tesParserGoPay`,
@@ -108,19 +117,27 @@ Kalau kena
 `syncLivin(365)`, lalu `syncLivin(365, 365)`, lalu `syncLivin(365, 730)`
 (berlaku juga buat `syncWondr` / `syncBibit` / `syncGoPay`).
 
+![tarik data historis](assets/tutorial_4.png)
+
 ### 7. Otomatisasi — run `pasangTrigger()` sekali
 
 Sejak ini `syncLivin` + `syncBibit` + `syncWondr` + `syncGoPay` jalan sendiri tiap 6 jam
 (inkremental, cuma narik email baru). Run ulang kapan pun aman — trigger
 lama dihapus dulu sebelum bikin baru, jadi nggak dobel.
 
+![set trigger](assets/tutorial_5.png)
+
 ### 8. Deploy dashboard
 
+![deploy dashboard](assets/tutorial_6.png)
 **Deploy → New deployment → Web app** → Execute as: *Me* → Who has access:
+![deploy dashboard](assets/tutorial_7.png)
 *Only myself* (dashboard pribadi) → Deploy → buka URL-nya.
+![link dashboard](assets/tutorial_8.png)
 
 > Tiap habis ubah kode: **Manage deployments → edit (ikon pensil) →
 > New version**. Kalau nggak, dashboard tetap jalanin versi lama.
+
 
 ### 9. Bikin akun login (sekali)
 
@@ -132,7 +149,9 @@ salt di ScriptProperties.
    (min 6 karakter), dan email pemulihan lewat prompt yang muncul.
 > Note: ketika fungsi buatAkun() di run maka akan muncul pop up di spreadsheet untuk input username dan password
 > isi input tersebut untuk keperluan login ke dashboard
+![buat akun](assets/tutorial_9.png)
 3. Buka URL dashboard → login.
+![login](assets/tutorial_10.png)
 4. Lupa password → klik **Lupa password** → kode 6 digit (berlaku
    15 menit) dikirim ke email pemulihan → tukar dengan password baru.
 
