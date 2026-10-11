@@ -188,6 +188,10 @@ Urutan baris = urutan pengecekan, jadi taruh `Belanja Makan` di atas
 `parse*` · `ambil*` · `cari*` · `tentukan*` · apa pun berakhiran `_`
 (mereka butuh parameter objek email).
 
+## Catatan builder
+Buka link dashboard  di incognito mode kalau di browser ada 
+akun gmail yang lebih dari satu 
+
 ## Troubleshooting
 
 | Gejala | Cek |
