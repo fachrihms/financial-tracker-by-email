@@ -130,8 +130,10 @@ salt di ScriptProperties.
 
 1. Di Apps Script, run fungsi **`buatAkun()`** → isi username, password
    (min 6 karakter), dan email pemulihan lewat prompt yang muncul.
-2. Buka URL dashboard → login.
-3. Lupa password → klik **Lupa password** → kode 6 digit (berlaku
+> Note: ketika fungsi buatAkun() di run maka akan muncul pop up di spreadsheet untuk input username dan password
+> isi input tersebut untuk keperluan login ke dashboard
+3. Buka URL dashboard → login.
+4. Lupa password → klik **Lupa password** → kode 6 digit (berlaku
    15 menit) dikirim ke email pemulihan → tukar dengan password baru.
 
 Sesi login berlaku 7 hari (tersimpan di browser). Tombol **Keluar** di
@@ -187,6 +189,10 @@ Urutan baris = urutan pengecekan, jadi taruh `Belanja Makan` di atas
 **Jangan di-run manual (helper, dipanggil fungsi lain):**
 `parse*` · `ambil*` · `cari*` · `tentukan*` · apa pun berakhiran `_`
 (mereka butuh parameter objek email).
+
+## Catatan builder
+Buka link dashboard  di incognito mode kalau di browser ada 
+akun gmail yang lebih dari satu 
 
 ## Troubleshooting
 
